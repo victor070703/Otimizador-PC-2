@@ -1,0 +1,48 @@
+name: Build Windows .exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install pywebview psutil pyinstaller
+
+      - name: Build .exe
+        run: |
+          pyinstaller pc_optimizer.spec --clean --noconfirm
+
+      - name: Upload .exe as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCOptimizer-Windows
+          path: dist/PCOptimizer.exe
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "PC Optimizer — Build ${{ github.run_number }}"
+          body: |
+            ## Download
+            Baixe o `PCOptimizer.exe` abaixo e execute diretamente — não precisa instalar nada.
+
+            **Requisitos:** Windows 10 ou superior (WebView2 já incluído no Windows 11).
+          files: dist/PCOptimizer.exe
+          make_latest: true
