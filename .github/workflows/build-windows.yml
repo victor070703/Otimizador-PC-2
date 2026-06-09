@@ -6,6 +6,9 @@ on:
       - 'v*'           # dispara em v1.0, v1.1, v2.0, etc.
   workflow_dispatch:   # permite correr manualmente pelo GitHub
 
+permissions:
+  contents: write   # necessário para criar releases e fazer upload de ficheiros
+
 jobs:
   build:
     runs-on: windows-latest
