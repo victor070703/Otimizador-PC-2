@@ -1,5 +1,18 @@
-const si = require('systeminformation');
-const os = require('os');
+const si  = require('systeminformation');
+const os  = require('os');
+const { execSync } = require('child_process');
+
+function _cpuWin() {
+  try {
+    const out = execSync(
+      'powershell -NoProfile -NonInteractive -Command ' +
+      '"(Get-CimInstance -ClassName Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"',
+      { timeout: 4000, windowsHide: true }
+    ).toString().trim();
+    const val = parseFloat(out);
+    return isNaN(val) ? null : val;
+  } catch (_) { return null; }
+}
 
 let _cache = {
   cpu:      { percent: 0, model: 'Carregando...', cores: 0, threads: 0 },
@@ -19,8 +32,9 @@ async function _update() {
       si.currentLoad(),
       si.cpu(),
     ]);
+    const winCpu = process.platform === 'win32' ? _cpuWin() : null;
     _cache.cpu = {
-      percent: Math.round(load.currentLoad * 10) / 10,
+      percent: winCpu !== null ? winCpu : Math.round(load.currentLoad * 10) / 10,
       model:   `${cpuInfo.manufacturer} ${cpuInfo.brand}`.trim(),
       cores:   cpuInfo.physicalCores || cpuInfo.cores,
       threads: cpuInfo.cores,
