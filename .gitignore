@@ -4,3 +4,7 @@ __pycache__/
 .DS_Store
 dist/
 build/
+.venv/
+frontend_backup/
+backend/system_backup.py
+.claude/

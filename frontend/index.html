@@ -137,7 +137,8 @@
           <div class="toggle" id="mode-toggle" onclick="toggleMode()" title="Ativar/desativar modo"></div>
         </div>
 
-        <div class="metrics-grid">
+        <!-- Métricas principais: CPU · RAM · GPU -->
+        <div class="metrics-grid metrics-grid-3">
           <div class="metric-card">
             <div class="metric-label"><i class="ti ti-cpu"></i> CPU</div>
             <div class="metric-val" id="cpu-val">—</div>
@@ -156,11 +157,15 @@
             <div class="metric-sub" id="gpu-sub">Carregando...</div>
             <div class="bar-wrap"><div class="bar-fill" id="gpu-bar" style="width:0%;background:#22c55e"></div></div>
           </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-device-floppy"></i> Disco</div>
-            <div class="metric-val" id="disk-val">—</div>
-            <div class="metric-sub" id="disk-sub">Carregando...</div>
-            <div class="bar-wrap"><div class="bar-fill" id="disk-bar" style="width:0%;background:#22c55e"></div></div>
+        </div>
+
+        <!-- Armazenamento: discos físicos -->
+        <div class="disks-section" id="disks-section">
+          <div class="section-label-small"><i class="ti ti-device-floppy"></i> Armazenamento</div>
+          <div class="disks-grid" id="disks-grid">
+            <div class="loading-row" style="font-size:12px;color:var(--text-tertiary)">
+              <i class="ti ti-loader-2"></i> Detectando discos...
+            </div>
           </div>
         </div>
 
@@ -190,8 +195,8 @@
             <div class="qa-title">Bloquear atualizações</div>
             <div class="qa-desc">Evitar downloads em segundo plano</div>
           </div>
-          <div class="qa-card">
-            <div class="qa-icon green"><i class="ti ti-refresh"></i></div>
+          <div class="qa-card" onclick="resetRam(this)">
+            <div class="qa-icon green"><i class="ti ti-refresh" id="ram-reset-icon"></i></div>
             <div class="qa-title">Liberar RAM</div>
             <div class="qa-desc">Descarregar processos inactivos da memória</div>
           </div>

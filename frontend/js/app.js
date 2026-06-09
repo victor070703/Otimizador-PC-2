@@ -91,7 +91,7 @@ if (window.pywebview) {
 ════════════════════════════════════════════════════ */
 function startMetricsLoop() {
   fetchMetrics();
-  setInterval(fetchMetrics, 2000);
+  setInterval(fetchMetrics, 1000);
 }
 
 async function fetchMetrics() {
@@ -127,11 +127,8 @@ function updateMetrics(d) {
   const gpuTemp = gpu.temp > 0 ? ` · ${gpu.temp}°C` : '';
   setText('gpu-sub', shorten((gpu.name || '—') + gpuTemp, 30));
 
-  // Disco
-  const io = ((disk.read_mb ?? 0) + (disk.write_mb ?? 0)).toFixed(1);
-  setText('disk-val', `${io} MB/s`);
-  setText('disk-sub', `${disk.free_gb ?? 0} GB livres`);
-  setBar ('disk-bar', disk.percent, barColor(disk.percent));
+  // Discos físicos na secção ARMAZENAMENTO
+  renderDisks(d.disks || [], disk);
 
   // Footer clock
   const now = new Date();
@@ -852,4 +849,83 @@ function loadingHTML(msg) {
 
 function errorHTML(msg) {
   return `<div class="loading-row"><i class="ti ti-alert-circle" style="animation:none;color:#ef4444"></i> ${esc(msg)}</div>`;
+}
+
+/* ════════════════════════════════════════════════════
+   MULTIPLE DISKS
+════════════════════════════════════════════════════ */
+function renderDisks(disks, globalDisk) {
+  const grid = document.getElementById('disks-grid');
+  if (!grid) return;
+
+  if (!disks || disks.length === 0) {
+    // Fallback: show global disk info
+    const io = (((globalDisk||{}).read_mb ?? 0) + ((globalDisk||{}).write_mb ?? 0)).toFixed(1);
+    grid.innerHTML = `
+      <div class="disk-card">
+        <div class="disk-card-header">
+          <i class="ti ti-device-floppy"></i>
+          <span class="disk-mount">Disco</span>
+          <span class="disk-pct ${pctClass(globalDisk?.percent)}">${globalDisk?.percent ?? 0}%</span>
+        </div>
+        <div class="bar-wrap" style="margin:6px 0">
+          <div class="bar-fill" style="width:${Math.min(100, globalDisk?.percent ?? 0)}%;background:${barColor(globalDisk?.percent)}"></div>
+        </div>
+        <div class="disk-card-footer">
+          <span>${globalDisk?.free_gb ?? 0} GB livres</span>
+          <span>${io} MB/s leitura</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // I/O global dividido proporcionalmente (melhor aproximação sem I/O por disco)
+  const totalIo = (((globalDisk||{}).read_mb ?? 0) + ((globalDisk||{}).write_mb ?? 0));
+
+  grid.innerHTML = disks.map(d => `
+    <div class="disk-card">
+      <div class="disk-card-header">
+        <i class="ti ti-device-floppy"></i>
+        <span class="disk-mount">${esc(d.label)}</span>
+        <span class="disk-pct ${pctClass(d.percent)}">${d.percent}%</span>
+      </div>
+      <div class="bar-wrap" style="margin:6px 0">
+        <div class="bar-fill" style="width:${Math.min(100, d.percent)}%;background:${barColor(d.percent)}"></div>
+      </div>
+      <div class="disk-card-footer">
+        <span>${d.free_gb} GB livres</span>
+        <span>${d.total_gb} GB total</span>
+      </div>
+    </div>`
+  ).join('');
+}
+
+function pctClass(pct) {
+  if ((pct ?? 0) >= 80) return 'red';
+  if ((pct ?? 0) >= 50) return 'amber';
+  return 'green';
+}
+
+/* ════════════════════════════════════════════════════
+   RAM RESET
+════════════════════════════════════════════════════ */
+async function resetRam(card) {
+  const icon = document.getElementById('ram-reset-icon');
+  if (icon) icon.style.animation = 'spin 1s linear infinite';
+  if (card) card.style.pointerEvents = 'none';
+
+  try {
+    const r = await API.resetRam();
+    showToast(
+      r.freed_bytes > 0
+        ? `RAM liberada: ${r.freed_label}`
+        : 'Limpeza de RAM concluída.',
+      'success'
+    );
+  } catch (_) {
+    showToast('Erro ao tentar liberar RAM.', 'error');
+  } finally {
+    if (icon) icon.style.animation = '';
+    if (card) card.style.pointerEvents = '';
+  }
 }

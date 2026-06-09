@@ -710,3 +710,59 @@ body {
 .history-desc  { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
 .history-meta  { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
 .history-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg-secondary); color: var(--text-secondary); border: 0.5px solid var(--border-secondary); flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
+
+/* ── Multiple Disks Section ── */
+.disks-section {
+  margin-bottom: 16px;
+}
+.section-label-small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.disks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.disk-card {
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.disk-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.disk-card-header i { color: var(--text-tertiary); font-size: 14px; }
+.disk-mount { flex: 1; color: var(--text-primary); }
+.disk-pct { font-size: 11px; font-weight: 600; }
+.disk-pct.red    { color: #ef4444; }
+.disk-pct.amber  { color: #f59e0b; }
+.disk-pct.green  { color: #22c55e; }
+.disk-card-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ── 3-column metrics grid (CPU / RAM / GPU) ── */
+.metrics-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* ── Disks section always visible ── */
+.disks-section {
+  margin-bottom: 16px;
+}

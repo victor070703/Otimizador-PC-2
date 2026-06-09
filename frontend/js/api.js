@@ -24,4 +24,5 @@ const API = {
   getHistory()                    { return _call('get_history'); },
   getOptimizationPreview(mode)    { return _call('get_optimization_preview', mode); },
   runOptimization(plan)            { return _call('run_optimization', plan); },
+  resetRam()                       { return _call('reset_ram'); },
 };
