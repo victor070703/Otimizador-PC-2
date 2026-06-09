@@ -1,18 +1,6 @@
 const si  = require('systeminformation');
 const os  = require('os');
-const { execSync } = require('child_process');
-
-function _cpuWin() {
-  try {
-    const out = execSync(
-      'powershell -NoProfile -NonInteractive -Command ' +
-      '"(Get-CimInstance -ClassName Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"',
-      { timeout: 4000, windowsHide: true }
-    ).toString().trim();
-    const val = parseFloat(out);
-    return isNaN(val) ? null : val;
-  } catch (_) { return null; }
-}
+const { exec } = require('child_process');
 
 let _cache = {
   cpu:      { percent: 0, model: 'Carregando...', cores: 0, threads: 0 },
@@ -23,16 +11,53 @@ let _cache = {
   platform: process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Darwin' : 'Linux',
 };
 
-let _prevDiskIO = null;
+let _updating = false;
+
+function _ps(cmd) {
+  return new Promise((resolve) => {
+    exec(
+      `powershell -NoProfile -NonInteractive -Command "${cmd}"`,
+      { timeout: 4000, windowsHide: true },
+      (err, stdout) => resolve(err ? null : stdout.trim())
+    );
+  });
+}
+
+async function _getCpuWin() {
+  const out = await _ps('(Get-CimInstance -ClassName Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average');
+  const val = parseFloat(out);
+  return isNaN(val) ? null : val;
+}
+
+async function _getGpuWin() {
+  // Usa perfmon — mesmo método do Task Manager
+  const out = await _ps(
+    '(Get-Counter "\\GPU Engine(*engtype_3D)\\Utilization Percentage" -ErrorAction SilentlyContinue).CounterSamples | ' +
+    'Where-Object {$_.CookedValue -gt 0} | ' +
+    'Measure-Object -Property CookedValue -Sum | ' +
+    'Select-Object -ExpandProperty Sum'
+  );
+  if (out === null) return null;
+  const val = parseFloat(out.replace(',', '.'));
+  return isNaN(val) ? null : Math.min(100, Math.round(val * 10) / 10);
+}
 
 async function _update() {
+  if (_updating) return;
+  _updating = true;
   try {
-    // CPU
-    const [load, cpuInfo] = await Promise.all([
+    const isWin = process.platform === 'win32';
+
+    // CPU + GPU Windows em paralelo com si calls
+    const [load, cpuInfo, mem, fsData] = await Promise.all([
       si.currentLoad(),
       si.cpu(),
+      si.mem(),
+      si.fsSize(),
     ]);
-    const winCpu = process.platform === 'win32' ? _cpuWin() : null;
+
+    // CPU
+    const winCpu = isWin ? await _getCpuWin() : null;
     _cache.cpu = {
       percent: winCpu !== null ? winCpu : Math.round(load.currentLoad * 10) / 10,
       model:   `${cpuInfo.manufacturer} ${cpuInfo.brand}`.trim(),
@@ -41,7 +66,6 @@ async function _update() {
     };
 
     // RAM
-    const mem = await si.mem();
     _cache.ram = {
       used_gb:  Math.round(mem.active  / (1024 ** 3) * 10) / 10,
       total_gb: Math.round(mem.total   / (1024 ** 3)),
@@ -49,73 +73,60 @@ async function _update() {
     };
 
     // GPU
-    try {
-      const graphics = await si.graphics();
-      const controllers = graphics.controllers || [];
-      // Prefer dedicated GPU (not Intel integrated)
-      const dedicated = controllers.find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || controllers[0];
-      if (dedicated) {
-        const pct  = dedicated.utilizationGpu  || 0;
-        const temp = dedicated.temperatureGpu  || 0;
+    if (isWin) {
+      const winGpu = await _getGpuWin();
+      if (winGpu !== null) {
+        const graphics = await si.graphics().catch(() => ({ controllers: [] }));
+        const ctrl = (graphics.controllers || []).find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || (graphics.controllers || [])[0];
         _cache.gpu = {
-          name:      dedicated.model || dedicated.vendor || 'GPU',
-          percent:   pct,
-          temp:      temp,
-          available: pct > 0 || temp > 0,
+          name:      ctrl ? (ctrl.model || ctrl.vendor || 'GPU') : 'GPU',
+          percent:   winGpu,
+          temp:      ctrl ? (ctrl.temperatureGpu || 0) : 0,
+          available: true,
         };
       }
-    } catch (_) {}
-
-    // Disk I/O
-    let read_mb = 0, write_mb = 0;
-    try {
-      const curr = await si.disksIO();
-      if (_prevDiskIO && curr) {
-        read_mb  = Math.max(0, (curr.rIO_sec  || 0) * 512 / (1024 ** 2));
-        write_mb = Math.max(0, (curr.wIO_sec  || 0) * 512 / (1024 ** 2));
-      }
-      _prevDiskIO = curr;
-    } catch (_) {}
+    } else {
+      try {
+        const graphics = await si.graphics();
+        const controllers = graphics.controllers || [];
+        const dedicated = controllers.find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || controllers[0];
+        if (dedicated) {
+          _cache.gpu = {
+            name:      dedicated.model || dedicated.vendor || 'GPU',
+            percent:   dedicated.utilizationGpu || 0,
+            temp:      dedicated.temperatureGpu || 0,
+            available: true,
+          };
+        }
+      } catch (_) {}
+    }
 
     // Disks
-    try {
-      const fsData = await si.fsSize();
-      const disks = fsData
-        .filter(d => {
-          if (d.size < 1024 ** 3) return false;
-          if (process.platform === 'darwin' && d.mount.startsWith('/System/Volumes/')) return false;
-          return true;
-        })
-        .map(d => ({
-          mount:    d.mount,
-          label:    d.mount,
-          free_gb:  Math.round((d.size - d.used) / (1024 ** 3) * 10) / 10,
-          total_gb: Math.round(d.size / (1024 ** 3) * 10) / 10,
-          percent:  Math.round(d.use * 10) / 10,
-        }));
+    const disks = (fsData || [])
+      .filter(d => {
+        if (d.size < 1024 ** 3) return false;
+        if (process.platform === 'darwin' && d.mount.startsWith('/System/Volumes/')) return false;
+        return true;
+      })
+      .map(d => ({
+        mount:    d.mount,
+        label:    d.mount,
+        free_gb:  Math.round((d.size - d.used) / (1024 ** 3) * 10) / 10,
+        total_gb: Math.round(d.size / (1024 ** 3) * 10) / 10,
+        percent:  Math.round(d.use * 10) / 10,
+      }));
 
-      const primary = disks[0] || {};
-      _cache.disk = {
-        read_mb:  Math.round(read_mb  * 10) / 10,
-        write_mb: Math.round(write_mb * 10) / 10,
-        free_gb:  primary.free_gb  || 0,
-        total_gb: primary.total_gb || 0,
-        percent:  primary.percent  || 0,
-      };
-      _cache.disks = disks;
-    } catch (_) {}
+    const primary = disks[0] || {};
+    _cache.disk  = { read_mb: 0, write_mb: 0, free_gb: primary.free_gb || 0, total_gb: primary.total_gb || 0, percent: primary.percent || 0 };
+    _cache.disks = disks;
 
-  } catch (e) {
-    // silently ignore
-  }
+  } catch (_) {}
+  _updating = false;
 }
 
-// Atualiza a cada 1s
-setInterval(_update, 1000);
+// Inicia e repete a cada 1s
 _update();
+setInterval(_update, 1000);
 
-function getAll() {
-  return { ..._cache };
-}
-
+function getAll() { return { ..._cache }; }
 module.exports = { getAll };
