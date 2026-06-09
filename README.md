@@ -13,9 +13,24 @@ O PC Optimizer monitora o sistema em tempo real e permite ao utilizador melhorar
 ## Funcionalidades
 
 ### Painel (Dashboard)
-- Métricas em tempo real atualizadas a cada 2 segundos: CPU, RAM, GPU e Disco
-- Deteção automática do hardware: nome do processador, modelo da GPU, espaço livre
+- Métricas em tempo real atualizadas a cada **1 segundo**: CPU, RAM e GPU
+- Deteção automática do hardware: nome do processador, modelo da GPU, temperatura
+- Secção **Armazenamento** com cards individuais por disco físico (GB livres, total e % usada)
 - Atalhos rápidos para as principais ações de otimização
+- Botão **Liberar RAM** — esvazia o working set de todos os processos acessíveis
+
+### GPU Real por Plataforma
+| Plataforma | Método |
+|---|---|
+| **Windows (NVIDIA)** | pynvml — uso % e temperatura em tempo real |
+| **Windows (AMD / Intel)** | Contador perfmon `GPU Engine` — sem instalar nada extra |
+| **macOS Apple Silicon** | `powermetrics` (requer sudo sem password) |
+
+### Armazenamento — Múltiplos Discos
+- Detecta automaticamente todos os discos físicos via `psutil.disk_partitions()`
+- Filtra volumes do sistema no macOS (`/System/Volumes/*`) — mostra apenas discos reais
+- Cada card mostra: ponto de montagem, % usada, GB livres e GB total
+- Barra de progresso colorida (verde / amarelo / vermelho conforme ocupação)
 
 ### Modos de Otimização
 Três modos disponíveis na sidebar, todos iniciados com o toggle **desligado** por padrão:
@@ -69,13 +84,14 @@ Antes de qualquer otimização, um modal apresenta:
 | Camada | Tecnologia |
 |--------|-----------|
 | Interface | HTML · CSS · JavaScript |
-| Janela desktop | pywebview 4.x (WebKit/WebView2) |
+| Janela desktop | pywebview 6.x (WebKit/WebView2) |
 | Monitorização | psutil |
-| Serviços Windows | subprocess + `sc` / PowerShell |
+| GPU NVIDIA | pynvml |
+| GPU AMD/Intel (Windows) | PowerShell perfmon counter |
+| Serviços Windows | subprocess + PowerShell `Get-CimInstance` |
 | Serviços macOS | subprocess + `launchctl` / psutil |
 | Ícones | Tabler Icons (bundled localmente) |
 | Distribuição | PyInstaller → `.exe` (Windows) / `.app` (macOS) |
-| CI/CD | GitHub Actions (build Windows .exe automático) |
 
 ---
 
@@ -85,12 +101,15 @@ Antes de qualquer otimização, um modal apresenta:
 pc-optimizer/
 ├── main.py                          # Entrada — inicia janela pywebview
 ├── requirements.txt                 # Dependências Python
-├── pc_optimizer.spec                # Configuração PyInstaller
-├── run.sh                           # Script de arranque rápido (macOS/Linux)
+├── pc_optimizer.spec                # Config PyInstaller — Windows (.exe)
+├── pc_optimizer_mac.spec            # Config PyInstaller — macOS (.app)
+├── build_windows.bat                # Build .exe com duplo clique
+├── build_mac.sh                     # Build .app no terminal macOS
+├── run.sh                           # Arranque rápido em desenvolvimento
 │
 ├── backend/
 │   ├── api.py                       # Classe exposta ao JavaScript via pywebview
-│   ├── system.py                    # Métricas CPU/RAM/GPU/Disco (thread background)
+│   ├── system.py                    # Métricas CPU/RAM/GPU/Discos (thread background)
 │   ├── processes.py                 # Listagem e encerramento de processos
 │   ├── services.py                  # Gestão de serviços (macOS + Windows)
 │   ├── cleanup.py                   # Scan e limpeza de ficheiros temporários
@@ -116,31 +135,30 @@ pc-optimizer/
 
 ## Como Executar
 
-### Desenvolvimento (macOS / Linux / Windows)
+### Desenvolvimento (macOS / Windows)
 
 ```bash
 # 1. Instalar dependências
-pip install pywebview psutil
+pip3 install pywebview psutil
+
+# macOS — se pip3 der erro de permissão:
+pip3 install pywebview psutil --break-system-packages
 
 # 2. Iniciar o app
 python3 main.py
 ```
 
-Ou usar o script incluído (macOS/Linux):
+> **macOS:** recomendado instalar Python via Homebrew (`brew install python@3.12`) para evitar conflitos com o Python do sistema.
+
+### Gerar o executável
+
+#### Windows — duplo clique em `build_windows.bat`
+O script instala as dependências automaticamente e gera `dist/PCOptimizer.exe`.
+
+#### macOS — terminal
 ```bash
-./run.sh
-```
-
-### Gerar o executável Windows (.exe)
-
-O build é feito automaticamente pelo GitHub Actions a cada `git push` na branch `main`.  
-O `.exe` fica disponível em **Releases** no repositório.
-
-Para buildar manualmente (numa máquina Windows):
-```bash
-pip install pywebview psutil pyinstaller
-pyinstaller pc_optimizer.spec --clean
-# Resultado: dist/PCOptimizer.exe
+./build_mac.sh
+# Resultado: dist/PCOptimizer.app
 ```
 
 ---
@@ -149,8 +167,15 @@ pyinstaller pc_optimizer.spec --clean
 
 | Plataforma | Requisitos |
 |------------|------------|
-| **macOS** | macOS 10.14+, Python 3.9+ |
-| **Windows** | Windows 10/11 (WebView2 incluído), Python 3.9+ |
+| **macOS** | macOS 10.14+, Python 3.12+ (Homebrew recomendado) |
+| **Windows** | Windows 10/11 (WebView2 incluído), Python 3.10+ |
+
+### Dependências Python
+```
+pywebview >= 6.0
+psutil    >= 5.9
+pynvml    >= 11.0   # opcional — GPU NVIDIA
+```
 
 ---
 
@@ -159,7 +184,7 @@ pyinstaller pc_optimizer.spec --clean
 ### Fase 1 — Base e Métricas Reais
 - Estrutura do projeto (backend + frontend)
 - Monitorização em tempo real com thread dedicada
-- Lista de processos com consumo real (cache de 2 em 2 segundos)
+- Lista de processos com consumo real
 - Interface fiel ao mockup original
 
 ### Fase 2 — Serviços, Limpeza, Histórico e Modal
@@ -175,9 +200,18 @@ pyinstaller pc_optimizer.spec --clean
 - Banner do modo mostra antecipadamente o que será feito (preview de ações)
 - Ativar Gaming/Uso Diário abre o modal de confirmação automaticamente
 - Trocar de modo reseta o toggle para OFF
-- Modo **Personalizado** com painel de configuração dedicado: checkboxes de serviços e ficheiros, botão "Aplicar configuração"
+- Modo **Personalizado** com painel de configuração dedicado
 - Ícones Tabler bundled localmente (sem CDN — funciona offline no `.exe`)
 - Pipeline GitHub Actions para build automático do `.exe` Windows
+
+### Fase 4 — GPU Real, Múltiplos Discos, Reset de RAM e Scripts de Build
+- **GPU real** por plataforma: pynvml (NVIDIA), perfmon (AMD/Intel Windows), powermetrics (Apple Silicon)
+- **CPU no Windows 11** corrigida: substituído `wmic` (removido no Win 11) por `Get-CimInstance` via PowerShell
+- **Múltiplos discos**: detecta e exibe todos os discos físicos com cards individuais; filtra volumes de sistema no macOS
+- **Auto-refresh** reduzido de 2 s para **1 s**
+- **Botão Liberar RAM**: esvazia working set de todos os processos via ctypes (Windows) ou `purge` (macOS)
+- **Dashboard redesenhado**: 3 cards no topo (CPU · RAM · GPU) + secção Armazenamento separada
+- **Scripts de build**: `build_windows.bat` (CRLF, duplo clique) e `build_mac.sh` com spec dedicado para `.app`
 
 ---
 
