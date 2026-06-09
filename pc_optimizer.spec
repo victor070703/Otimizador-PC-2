@@ -51,9 +51,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,           # UPX desativado — evita falsos positivos de antivírus
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,       # Sem janela de console
+    console=False,
     icon=None,
 )

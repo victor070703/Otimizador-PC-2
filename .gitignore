@@ -8,3 +8,13 @@ build/
 frontend_backup/
 backend/system_backup.py
 .claude/
+
+# V2 Electron
+v2/node_modules/
+v2/dist/
+
+# Nuitka artifacts (removidos)
+dist_nuitka/
+nuitka-crash-report.xml
+build_mac_nuitka.sh
+build_windows_nuitka.bat
