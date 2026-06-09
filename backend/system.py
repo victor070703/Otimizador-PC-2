@@ -19,10 +19,14 @@ _lock = threading.Lock()
 
 
 def _ps(command: str, timeout: int = 5) -> str:
-    """Run a PowerShell command and return stdout stripped."""
+    """Run a PowerShell command silently in the background and return stdout stripped."""
+    flags = 0
+    if _system == 'Windows':
+        flags = subprocess.CREATE_NO_WINDOW  # never show a terminal window
     result = subprocess.run(
         ['powershell', '-NoProfile', '-NonInteractive', '-Command', command],
-        capture_output=True, text=True, timeout=timeout
+        capture_output=True, text=True, timeout=timeout,
+        creationflags=flags
     )
     return result.stdout.strip()
 
