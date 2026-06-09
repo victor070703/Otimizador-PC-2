@@ -2,8 +2,9 @@ name: Build Windows .exe
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    tags:
+      - 'v*'           # dispara em v1.0, v1.1, v2.0, etc.
+  workflow_dispatch:   # permite correr manualmente pelo GitHub
 
 jobs:
   build:
@@ -21,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pywebview psutil pyinstaller
+          pip install pywebview psutil pyinstaller pynvml
 
       - name: Build .exe
         run: |
@@ -37,12 +38,20 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: "PC Optimizer — Build ${{ github.run_number }}"
+          tag_name: ${{ github.ref_name }}
+          name: "PC Optimizer ${{ github.ref_name }}"
           body: |
-            ## Download
-            Baixe o `PCOptimizer.exe` abaixo e execute diretamente — não precisa instalar nada.
+            ## ⬇️ Download
+            Baixe o **PCOptimizer.exe** abaixo e execute diretamente — não precisa instalar nada.
 
-            **Requisitos:** Windows 10 ou superior (WebView2 já incluído no Windows 11).
+            **Requisitos:** Windows 10 ou superior · WebView2 já incluído no Windows 11.
+
+            ---
+
+            ### ✅ Segurança
+            Este ficheiro é gerado automaticamente pelo GitHub Actions a partir do código fonte público neste repositório.
+            Alguns antivírus podem mostrar um aviso falso (falso positivo) devido ao empacotamento PyInstaller — o código é 100% open source e auditável.
+
+            > Se o seu antivírus bloquear, adicione uma excepção ou compile você mesmo com `build_windows.bat`.
           files: dist/PCOptimizer.exe
           make_latest: true

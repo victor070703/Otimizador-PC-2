@@ -69,7 +69,7 @@ app = BUNDLE(
         'NSPrincipalClass':          'NSApplication',
         'NSHighResolutionCapable':   True,
         'CFBundleDisplayName':       'PC Optimizer',
-        'CFBundleShortVersionString':'1.0.0',
+        'CFBundleShortVersionString':'1.1.0',
         'LSMinimumSystemVersion':    '10.14.0',
         'NSAppleEventsUsageDescription': 'Necessário para gerir processos do sistema.',
     },
