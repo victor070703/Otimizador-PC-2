@@ -24,7 +24,10 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": null
+      "icon": null,
+      "asar": false,
+      "signingHashAlgorithms": null,
+      "certificateSubjectName": null
     },
     "mac": {
       "target": "dmg",
@@ -34,9 +37,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerLanguages": [
-        "pt_BR"
-      ]
+      "installerLanguages": ["pt_BR"],
+      "shortcutName": "PCOptimizer"
     }
   },
   "dependencies": {

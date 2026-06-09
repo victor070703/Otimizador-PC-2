@@ -55,7 +55,7 @@
         <div class="logo-icon"><i class="ti ti-cpu"></i></div>
         <div>
           <div class="logo-text">PC Optimizer</div>
-          <div class="logo-sub" id="platform-sub">v1.1 • Carregando...</div>
+          <div class="logo-sub" id="platform-sub">v2.0 • Carregando...</div>
         </div>
       </div>
     </div>
@@ -110,8 +110,8 @@
         <div class="page-sub" id="page-sub">Visão geral · Modo Gaming ativo</div>
       </div>
       <div class="action-row">
-        <button class="btn-sec" title="Ajuda">
-          <i class="ti ti-help-circle"></i> Ajuda
+        <button class="btn-sec btn-theme" id="theme-toggle" onclick="toggleTheme()" title="Modo noturno">
+          <i class="ti ti-moon"></i>
         </button>
         <button class="btn-primary" id="optimize-btn" onclick="openOptimizeModal()">
           <i class="ti ti-bolt"></i> Otimizar agora
@@ -323,9 +323,23 @@
     API.getMetrics().then(function (data) {
       const map = { Darwin: 'macOS', Windows: 'Windows 11', Linux: 'Linux' };
       const el  = document.getElementById('platform-sub');
-      if (el) el.textContent = 'v1.0 • ' + (map[data.platform] || data.platform || '—');
+      if (el) el.textContent = 'v2.0 • ' + (map[data.platform] || data.platform || '—');
     }).catch(function(){});
+
+    // Restore saved theme
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+      const btn = document.getElementById('theme-toggle');
+      if (btn) btn.innerHTML = '<i class="ti ti-sun"></i>';
+    }
   });
+
+  function toggleTheme() {
+    const isDark = document.documentElement.classList.toggle('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.innerHTML = isDark ? '<i class="ti ti-sun"></i>' : '<i class="ti ti-moon"></i>';
+  }
 </script>
 
 </body>

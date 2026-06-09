@@ -17,6 +17,32 @@
   --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
 
+/* ── Dark Mode ── */
+html.dark {
+  --bg-primary: #0f1117;
+  --bg-secondary: #161b22;
+  --bg-hover: #1e2530;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-tertiary: #6e7681;
+  --border-primary: #30363d;
+  --border-secondary: #21262d;
+  --border-tertiary: #161b22;
+  --accent: #4ecca3;
+  --accent-bg: #0d1117;
+}
+
+html.dark .card          { background: var(--bg-secondary); border-color: var(--border-secondary); }
+html.dark .modal-overlay { background: rgba(0,0,0,.7); }
+html.dark .modal-box     { background: var(--bg-secondary); border: 1px solid var(--border-primary); }
+html.dark .metric-card   { background: var(--bg-secondary); border-color: var(--border-secondary); }
+html.dark .process-row:hover,
+html.dark .service-row:hover { background: var(--bg-hover); }
+html.dark .btn-sec       { background: var(--bg-hover); border-color: var(--border-primary); color: var(--text-primary); }
+html.dark .btn-sec:hover { background: var(--border-primary); }
+html.dark .progress-track { background: var(--bg-hover); }
+html.dark input, html.dark select { background: var(--bg-primary); border-color: var(--border-primary); color: var(--text-primary); }
+
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
