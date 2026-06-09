@@ -11,35 +11,56 @@ let _cache = {
   platform: process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Darwin' : 'Linux',
 };
 
-let _updating = false;
+let _updating   = false;
+let _gpuName    = null;    // cacheado uma vez
+let _hasNvidia  = null;    // null = ainda não testado
 
-function _ps(cmd) {
+// ── CPU via Win32_Processor (mesmo valor do Task Manager) ──────
+function _cpuWin() {
   return new Promise((resolve) => {
     exec(
-      `powershell -NoProfile -NonInteractive -Command "${cmd}"`,
-      { timeout: 4000, windowsHide: true },
-      (err, stdout) => resolve(err ? null : stdout.trim())
+      'powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"',
+      { timeout: 3500, windowsHide: true },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(null);
+        const v = parseFloat(stdout.trim().replace(',', '.'));
+        resolve(isNaN(v) ? null : Math.round(v * 10) / 10);
+      }
     );
   });
 }
 
-async function _getCpuWin() {
-  const out = await _ps('(Get-CimInstance -ClassName Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average');
-  const val = parseFloat(out);
-  return isNaN(val) ? null : val;
+// ── GPU via nvidia-smi (valor idêntico ao Task Manager) ───────
+function _gpuNvidia() {
+  return new Promise((resolve) => {
+    exec(
+      'nvidia-smi --query-gpu=utilization.gpu,temperature.gpu,name --format=csv,noheader,nounits',
+      { timeout: 3500, windowsHide: true },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(null);
+        const parts = stdout.trim().split('\n')[0].split(',').map(s => s.trim());
+        const util = parseFloat(parts[0]);
+        const temp = parseFloat(parts[1]);
+        if (isNaN(util)) return resolve(null);
+        resolve({ percent: Math.round(util * 10) / 10, temp: isNaN(temp) ? 0 : temp, name: parts[2] || 'NVIDIA GPU' });
+      }
+    );
+  });
 }
 
-async function _getGpuWin() {
-  // Usa perfmon — mesmo método do Task Manager
-  const out = await _ps(
-    '(Get-Counter "\\GPU Engine(*engtype_3D)\\Utilization Percentage" -ErrorAction SilentlyContinue).CounterSamples | ' +
-    'Where-Object {$_.CookedValue -gt 0} | ' +
-    'Measure-Object -Property CookedValue -Sum | ' +
-    'Select-Object -ExpandProperty Sum'
-  );
-  if (out === null) return null;
-  const val = parseFloat(out.replace(',', '.'));
-  return isNaN(val) ? null : Math.min(100, Math.round(val * 10) / 10);
+// ── GPU via perfmon (fallback p/ AMD/Intel) ───────────────────
+function _gpuPerfmon() {
+  return new Promise((resolve) => {
+    exec(
+      'powershell -NoProfile -NonInteractive -Command "$s=(Get-Counter \'\\GPU Engine(*engtype_3D)\\Utilization Percentage\' -ErrorAction SilentlyContinue).CounterSamples; if($s){($s | Measure-Object -Property CookedValue -Sum).Sum}else{0}"',
+      { timeout: 3500, windowsHide: true },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(null);
+        const v = parseFloat(stdout.trim().replace(',', '.'));
+        resolve(isNaN(v) ? null : Math.min(100, Math.round(v * 10) / 10));
+      }
+    );
+  });
 }
 
 async function _update() {
@@ -48,7 +69,6 @@ async function _update() {
   try {
     const isWin = process.platform === 'win32';
 
-    // CPU + GPU Windows em paralelo com si calls
     const [load, cpuInfo, mem, fsData] = await Promise.all([
       si.currentLoad(),
       si.cpu(),
@@ -56,52 +76,64 @@ async function _update() {
       si.fsSize(),
     ]);
 
-    // CPU
-    const winCpu = isWin ? await _getCpuWin() : null;
-    _cache.cpu = {
-      percent: winCpu !== null ? winCpu : Math.round(load.currentLoad * 10) / 10,
-      model:   `${cpuInfo.manufacturer} ${cpuInfo.brand}`.trim(),
-      cores:   cpuInfo.physicalCores || cpuInfo.cores,
-      threads: cpuInfo.cores,
-    };
+    // Nome da GPU — busca uma vez só (lento)
+    if (_gpuName === null) {
+      try {
+        const g = await si.graphics();
+        const ctrl = (g.controllers || []).find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || (g.controllers || [])[0];
+        _gpuName = ctrl ? (ctrl.model || ctrl.vendor || 'GPU') : 'GPU';
+      } catch (_) { _gpuName = 'GPU'; }
+    }
 
-    // RAM
-    _cache.ram = {
-      used_gb:  Math.round(mem.active  / (1024 ** 3) * 10) / 10,
-      total_gb: Math.round(mem.total   / (1024 ** 3)),
-      percent:  Math.round(mem.active  / mem.total * 1000) / 10,
-    };
-
-    // GPU
     if (isWin) {
-      const winGpu = await _getGpuWin();
-      if (winGpu !== null) {
-        const graphics = await si.graphics().catch(() => ({ controllers: [] }));
-        const ctrl = (graphics.controllers || []).find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || (graphics.controllers || [])[0];
-        _cache.gpu = {
-          name:      ctrl ? (ctrl.model || ctrl.vendor || 'GPU') : 'GPU',
-          percent:   winGpu,
-          temp:      ctrl ? (ctrl.temperatureGpu || 0) : 0,
-          available: true,
-        };
+      // CPU e GPU em paralelo (chamadas rápidas)
+      const nvidiaCall = _hasNvidia === false ? Promise.resolve(null) : _gpuNvidia();
+      const [cpuPct, nvidia] = await Promise.all([_cpuWin(), nvidiaCall]);
+
+      _cache.cpu = {
+        percent: cpuPct !== null ? cpuPct : Math.round(load.currentLoad * 10) / 10,
+        model:   `${cpuInfo.manufacturer} ${cpuInfo.brand}`.trim(),
+        cores:   cpuInfo.physicalCores || cpuInfo.cores,
+        threads: cpuInfo.cores,
+      };
+
+      if (nvidia) {
+        _hasNvidia = true;
+        _cache.gpu = { name: nvidia.name, percent: nvidia.percent, temp: nvidia.temp, available: true };
+      } else {
+        if (_hasNvidia === null) _hasNvidia = false;  // sem nvidia-smi → usa perfmon
+        const pct = await _gpuPerfmon();
+        _cache.gpu = { name: _gpuName, percent: pct !== null ? pct : 0, temp: 0, available: true };
       }
     } else {
+      _cache.cpu = {
+        percent: Math.round(load.currentLoad * 10) / 10,
+        model:   `${cpuInfo.manufacturer} ${cpuInfo.brand}`.trim(),
+        cores:   cpuInfo.physicalCores || cpuInfo.cores,
+        threads: cpuInfo.cores,
+      };
       try {
-        const graphics = await si.graphics();
-        const controllers = graphics.controllers || [];
-        const dedicated = controllers.find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || controllers[0];
-        if (dedicated) {
+        const g = await si.graphics();
+        const ctrl = (g.controllers || []).find(c => c.vendor && !c.vendor.toLowerCase().includes('intel')) || (g.controllers || [])[0];
+        if (ctrl) {
           _cache.gpu = {
-            name:      dedicated.model || dedicated.vendor || 'GPU',
-            percent:   dedicated.utilizationGpu || 0,
-            temp:      dedicated.temperatureGpu || 0,
+            name:      ctrl.model || ctrl.vendor || 'GPU',
+            percent:   ctrl.utilizationGpu || 0,
+            temp:      ctrl.temperatureGpu || 0,
             available: true,
           };
         }
       } catch (_) {}
     }
 
-    // Disks
+    // RAM
+    _cache.ram = {
+      used_gb:  Math.round(mem.active / (1024 ** 3) * 10) / 10,
+      total_gb: Math.round(mem.total  / (1024 ** 3)),
+      percent:  Math.round(mem.active / mem.total * 1000) / 10,
+    };
+
+    // Discos
     const disks = (fsData || [])
       .filter(d => {
         if (d.size < 1024 ** 3) return false;
@@ -124,7 +156,6 @@ async function _update() {
   _updating = false;
 }
 
-// Inicia e repete a cada 1s
 _update();
 setInterval(_update, 1000);
 
